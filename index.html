@@ -1,0 +1,891 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>義大癌醫藥劑科 - 藥品收支結存簿</title>
+    <!-- Tailwind CSS (via CDN) -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome (Icons) -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Google Fonts: Noto Sans TC -->
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@300;400;500;700&display=swap" rel="stylesheet">
+    
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['"Noto Sans TC"', 'sans-serif'],
+                    },
+                    colors: {
+                        medical: {
+                            50: '#f0f9ff',
+                            100: '#e0f2fe',
+                            500: '#0ea5e9',
+                            600: '#0284c7',
+                            800: '#075985',
+                            900: '#0c4a6e',
+                        },
+                        brand: {
+                            main: '#008080', // Medical Teal
+                            dark: '#005f5f',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        body {
+            background-color: #f1f5f9; /* Slate 100 */
+        }
+        
+        /* Signature Canvas Style */
+        #signature-pad {
+            border: 2px dashed #cbd5e1;
+            border-radius: 0.5rem;
+            cursor: crosshair;
+            background-color: #fff;
+            touch-action: none; /* Prevent scrolling while signing */
+        }
+
+        /* Print Specific Styles - CRITICAL FIXES */
+        @media print {
+            /* Reset Layout */
+            body, html {
+                height: auto !important;
+                overflow: visible !important;
+                background-color: white !important;
+                display: block !important; /* Remove flex layout */
+            }
+            
+            /* Hide Interface Elements */
+            header, aside, .no-print, button, #entry-modal, #add-drug-modal, #settings-modal {
+                display: none !important;
+            }
+
+            /* Main Content Expansion */
+            main {
+                display: block !important;
+                width: 100% !important;
+                height: auto !important;
+                overflow: visible !important;
+                margin: 0 !important;
+                padding: 0 !important;
+                position: static !important;
+                background-color: white !important;
+            }
+
+            /* Container overrides */
+            .flex-1, .overflow-auto, .overflow-hidden {
+                flex: none !important;
+                overflow: visible !important;
+                height: auto !important;
+                display: block !important;
+            }
+
+            /* Show Print Header */
+            .print-only {
+                display: block !important;
+            }
+
+            .print-header {
+                text-align: center;
+                margin-bottom: 20px;
+                border-bottom: 2px solid #000;
+                padding-bottom: 10px;
+            }
+
+            /* Table Styling for Print */
+            table {
+                width: 100% !important;
+                border-collapse: collapse !important;
+                font-size: 10pt;
+                table-layout: fixed; /* Fix column widths */
+            }
+            
+            th, td {
+                border: 1px solid #000 !important;
+                padding: 4px !important;
+                text-align: center;
+                color: black !important; /* Force black text */
+            }
+
+            thead {
+                display: table-header-group; /* Repeat header on new page */
+            }
+            
+            tr {
+                break-inside: avoid; /* Prevent row splitting */
+            }
+            
+            th {
+                background-color: #f3f4f6 !important;
+                -webkit-print-color-adjust: exact;
+            }
+        }
+
+        .print-only {
+            display: none;
+        }
+
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #f1f1f1; 
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #cbd5e1; 
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #94a3b8; 
+        }
+    </style>
+</head>
+<body class="text-slate-800 h-screen flex flex-col overflow-hidden">
+
+    <!-- Top Navigation -->
+    <header class="bg-white shadow-sm border-b border-slate-200 z-20 no-print">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between h-16">
+                <div class="flex items-center">
+                    <div class="flex-shrink-0 flex items-center gap-3">
+                        <i class="fa-solid fa-staff-snake text-3xl text-brand-main"></i>
+                        <div>
+                            <h1 class="text-xl font-bold text-slate-900 tracking-wide">義大癌治療醫院</h1>
+                            <p class="text-xs text-slate-500 font-medium">藥劑科藥品收支結存系統</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="flex items-center space-x-4">
+                    <div class="text-sm text-right hidden sm:block">
+                        <div id="current-user" class="font-bold text-slate-700">臨床藥師</div>
+                        <div id="system-time" class="text-xs text-slate-400">2023-01-01</div>
+                    </div>
+                    <button onclick="toggleModal('settings-modal')" class="p-2 rounded-full text-slate-400 hover:text-brand-main hover:bg-slate-100 transition">
+                        <i class="fa-solid fa-gear text-lg"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <div class="flex flex-1 overflow-hidden">
+        
+        <!-- Sidebar (Drug Selection) -->
+        <aside class="w-64 bg-white border-r border-slate-200 flex flex-col no-print z-10 transition-all duration-300" id="sidebar">
+            <div class="p-4 border-b border-slate-100 flex justify-between items-center">
+                <h2 class="text-sm font-semibold text-slate-500 uppercase tracking-wider">藥品清單</h2>
+                <button onclick="toggleModal('add-drug-modal')" class="text-brand-main hover:text-brand-dark text-sm font-bold" title="新增藥品">
+                    <i class="fa-solid fa-plus"></i> 新增
+                </button>
+            </div>
+            <nav class="flex-1 overflow-y-auto p-2 space-y-1" id="drug-list">
+                <!-- Drug items will be injected here -->
+            </nav>
+            <div class="p-4 bg-slate-50 border-t border-slate-200">
+                <div class="text-xs text-slate-400 mb-2">資料管理</div>
+                <div class="grid grid-cols-2 gap-2">
+                    <button onclick="exportJSON()" class="flex items-center justify-center px-2 py-1.5 border border-slate-300 rounded text-xs text-slate-600 hover:bg-white transition">
+                        <i class="fa-solid fa-file-export mr-1"></i> 匯出草稿
+                    </button>
+                    <button onclick="document.getElementById('import-file').click()" class="flex items-center justify-center px-2 py-1.5 border border-slate-300 rounded text-xs text-slate-600 hover:bg-white transition">
+                        <i class="fa-solid fa-file-import mr-1"></i> 匯入草稿
+                    </button>
+                    <input type="file" id="import-file" class="hidden" accept=".json" onchange="importJSON(this)">
+                </div>
+            </div>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="flex-1 flex flex-col bg-slate-50 overflow-hidden relative">
+            
+            <!-- Toolbar -->
+            <div class="bg-white border-b border-slate-200 px-6 py-3 flex justify-between items-center no-print">
+                <div>
+                    <h2 id="current-drug-name" class="text-lg font-bold text-slate-800">請選擇藥品</h2>
+                    <p id="current-drug-stock" class="text-sm text-slate-500">目前結存: -</p>
+                </div>
+                <div class="flex space-x-2">
+                    <button onclick="toggleModal('entry-modal')" class="bg-brand-main hover:bg-brand-dark text-white px-4 py-2 rounded-md shadow-sm text-sm font-medium transition flex items-center">
+                        <i class="fa-solid fa-pen-to-square mr-2"></i> 新增紀錄
+                    </button>
+                    <div class="h-8 w-px bg-slate-300 mx-2"></div>
+                    <button onclick="exportCSV()" class="text-slate-600 hover:text-brand-main hover:bg-slate-100 px-3 py-2 rounded-md text-sm font-medium transition">
+                        <i class="fa-solid fa-file-csv mr-1"></i> Excel
+                    </button>
+                    <button onclick="printLedger()" class="text-slate-600 hover:text-brand-main hover:bg-slate-100 px-3 py-2 rounded-md text-sm font-medium transition">
+                        <i class="fa-solid fa-print mr-1"></i> 列印
+                    </button>
+                </div>
+            </div>
+
+            <!-- Print Header (Visible only in print) -->
+            <div class="print-only print-header">
+                <h1>義大癌治療醫院 藥劑科</h1>
+                <h2>管制/高警訊藥品收支結存簿</h2>
+                <h3 id="print-drug-name">藥品名稱: </h3>
+                <p>列印日期: <span id="print-date"></span></p>
+            </div>
+
+            <!-- Table Container -->
+            <div class="flex-1 overflow-auto p-6">
+                <div class="bg-white rounded-lg shadow ring-1 ring-black ring-opacity-5 overflow-hidden">
+                    <table class="min-w-full divide-y divide-slate-300">
+                        <thead class="bg-slate-50">
+                            <tr>
+                                <th scope="col" class="py-3.5 pl-4 pr-3 text-left text-sm font-semibold text-slate-900">日期</th>
+                                <th scope="col" class="px-3 py-3.5 text-left text-sm font-semibold text-slate-900">來源/單號</th>
+                                <th scope="col" class="px-3 py-3.5 text-left text-sm font-semibold text-slate-900">病歷號/姓名</th>
+                                <th scope="col" class="px-3 py-3.5 text-left text-sm font-semibold text-slate-900">批號/效期</th>
+                                <th scope="col" class="px-3 py-3.5 text-right text-sm font-semibold text-slate-900">異動量</th>
+                                <th scope="col" class="px-3 py-3.5 text-right text-sm font-semibold text-slate-900">結存</th>
+                                <th scope="col" class="px-3 py-3.5 text-center text-sm font-semibold text-slate-900">簽名</th>
+                            </tr>
+                        </thead>
+                        <tbody id="ledger-body" class="divide-y divide-slate-200 bg-white">
+                            <!-- Rows will be injected here -->
+                            <tr>
+                                <td colspan="7" class="px-3 py-10 text-center text-slate-400 text-sm">請選擇藥品或新增第一筆資料</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Modal: Add Transaction -->
+    <div id="entry-modal" class="fixed inset-0 z-50 hidden" aria-labelledby="modal-title" role="dialog" aria-modal="true">
+        <div class="fixed inset-0 bg-slate-500 bg-opacity-75 transition-opacity backdrop-blur-sm"></div>
+        <div class="fixed inset-0 z-10 overflow-y-auto">
+            <div class="flex min-h-full items-end justify-center p-4 text-center sm:items-center sm:p-0">
+                <div class="relative transform overflow-hidden rounded-lg bg-white text-left shadow-xl transition-all sm:my-8 sm:w-full sm:max-w-2xl">
+                    <!-- Modal Header -->
+                    <div class="bg-white px-4 pb-4 pt-5 sm:p-6 sm:pb-4 border-b border-slate-100">
+                        <h3 class="text-xl font-semibold leading-6 text-slate-900" id="modal-title">新增收支紀錄</h3>
+                        <p id="modal-drug-name" class="mt-1 text-sm text-brand-main font-bold"></p>
+                    </div>
+
+                    <!-- Modal Body -->
+                    <form id="transaction-form" class="px-4 py-5 sm:p-6 space-y-4">
+                        <div class="grid grid-cols-1 gap-x-6 gap-y-4 sm:grid-cols-6">
+                            
+                            <!-- Date -->
+                            <div class="sm:col-span-3">
+                                <label class="block text-sm font-medium leading-6 text-slate-900">日期</label>
+                                <input type="date" id="entry-date" required class="mt-2 block w-full rounded-md border-0 py-1.5 text-slate-900 shadow-sm ring-1 ring-inset ring-slate-300 focus:ring-2 focus:ring-inset focus:ring-brand-main sm:text-sm sm:leading-6 px-2">
+                            </div>
+
+                            <!-- Type/Source -->
+                            <div class="sm:col-span-3">
+                                <label class="block text-sm font-medium leading-6 text-slate-900">調劑來源/作業</label>
+                                <select id="entry-type" onchange="handleTypeChange()" class="mt-2 block w-full rounded-md border-0 py-1.5 text-slate-900 shadow-sm ring-1 ring-inset ring-slate-300 focus:ring-2 focus:ring-inset focus:ring-brand-main sm:text-sm sm:leading-6 px-2">
+                                    <option value="OPD">門診 (OPD)</option>
+                                    <option value="ER">急診 (ER)</option>
+                                    <option value="IPD">住院 (Inpatient)</option>
+                                    <option value="IN">進貨入庫 (Stock In)</option>
+                                    <option value="RETURN">退藥 (Return)</option>
+                                    <option value="CHECK">盤點核對 (Inventory Check)</option>
+                                </select>
+                            </div>
+
+                            <!-- Dynamic Reference Number -->
+                            <div class="sm:col-span-3" id="field-ref">
+                                <label id="label-ref" class="block text-sm font-medium leading-6 text-slate-900">領藥號碼</label>
+                                <input type="text" id="entry-ref" class="mt-2 block w-full rounded-md border-0 py-1.5 text-slate-900 shadow-sm ring-1 ring-inset ring-slate-300 placeholder:text-slate-400 focus:ring-2 focus:ring-inset focus:ring-brand-main sm:text-sm sm:leading-6 px-2">
+                            </div>
+
+                            <!-- Empty spacer for grid alignment if needed, or just let them flow -->
+                            
+                            <!-- Batch Number -->
+                            <div class="sm:col-span-3">
+                                <label class="block text-sm font-medium leading-6 text-slate-900">藥品批號</label>
+                                <input type="text" id="entry-batch" list="batch-history" onchange="handleBatchChange()" class="mt-2 block w-full rounded-md border-0 py-1.5 text-slate-900 shadow-sm ring-1 ring-inset ring-slate-300 focus:ring-2 focus:ring-inset focus:ring-brand-main sm:text-sm sm:leading-6 px-2" placeholder="輸入或選擇">
+                                <datalist id="batch-history"></datalist>
+                            </div>
+
+                             <!-- Expiry Date (New) -->
+                             <div class="sm:col-span-3">
+                                <label class="block text-sm font-medium leading-6 text-slate-900">有效期限</label>
+                                <input type="date" id="entry-expiry" class="mt-2 block w-full rounded-md border-0 py-1.5 text-slate-900 shadow-sm ring-1 ring-inset ring-slate-300 focus:ring-2 focus:ring-inset focus:ring-brand-main sm:text-sm sm:leading-6 px-2">
+                            </div>
+
+                            <!-- Patient Info -->
+                            <div class="sm:col-span-3" id="field-chart">
+                                <label class="block text-sm font-medium leading-6 text-slate-900">病人病歷號</label>
+                                <input type="text" id="entry-chart" class="mt-2 block w-full rounded-md border-0 py-1.5 text-slate-900 shadow-sm ring-1 ring-inset ring-slate-300 focus:ring-2 focus:ring-inset focus:ring-brand-main sm:text-sm sm:leading-6 px-2">
+                            </div>
+                            <div class="sm:col-span-3" id="field-name">
+                                <label class="block text-sm font-medium leading-6 text-slate-900">病人姓名</label>
+                                <input type="text" id="entry-name" class="mt-2 block w-full rounded-md border-0 py-1.5 text-slate-900 shadow-sm ring-1 ring-inset ring-slate-300 focus:ring-2 focus:ring-inset focus:ring-brand-main sm:text-sm sm:leading-6 px-2">
+                            </div>
+
+                            <!-- Quantity -->
+                            <div class="sm:col-span-6 bg-slate-50 p-3 rounded-md border border-slate-200">
+                                <label class="block text-sm font-medium leading-6 text-slate-900">調劑數量 <span id="qty-hint" class="text-xs text-slate-500 font-normal"></span></label>
+                                <div class="flex items-center gap-2">
+                                    <input type="number" id="entry-qty" step="0.01" required class="mt-2 block w-full rounded-md border-0 py-2 text-slate-900 text-lg font-bold shadow-sm ring-1 ring-inset ring-slate-300 focus:ring-2 focus:ring-inset focus:ring-brand-main px-2">
+                                    <span class="text-sm text-slate-500 mt-2" id="unit-display"></span>
+                                </div>
+                                <p class="text-xs text-red-500 mt-1 hidden" id="stock-error">庫存不足！</p>
+                            </div>
+
+                            <!-- Signature -->
+                            <div class="sm:col-span-6">
+                                <div class="flex justify-between items-center mb-1">
+                                    <label class="block text-sm font-medium leading-6 text-slate-900">領取人員簽名</label>
+                                    <button type="button" onclick="clearSignature()" class="text-xs text-brand-main hover:underline">清除重簽</button>
+                                </div>
+                                <canvas id="signature-pad" width="600" height="150" class="w-full h-32"></canvas>
+                                <input type="hidden" id="entry-signature" required>
+                            </div>
+                        </div>
+                    </form>
+
+                    <!-- Modal Footer -->
+                    <div class="bg-slate-50 px-4 py-3 sm:flex sm:flex-row-reverse sm:px-6">
+                        <button type="button" onclick="submitTransaction()" class="inline-flex w-full justify-center rounded-md bg-brand-main px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-brand-dark sm:ml-3 sm:w-auto">確認登錄</button>
+                        <button type="button" onclick="toggleModal('entry-modal')" class="mt-3 inline-flex w-full justify-center rounded-md bg-white px-3 py-2 text-sm font-semibold text-slate-900 shadow-sm ring-1 ring-inset ring-slate-300 hover:bg-slate-50 sm:mt-0 sm:w-auto">取消</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal: Add Drug -->
+    <div id="add-drug-modal" class="fixed inset-0 z-50 hidden" aria-labelledby="modal-title" role="dialog" aria-modal="true">
+        <div class="fixed inset-0 bg-slate-500 bg-opacity-75 transition-opacity backdrop-blur-sm"></div>
+        <div class="fixed inset-0 z-10 overflow-y-auto">
+            <div class="flex min-h-full items-center justify-center p-4">
+                <div class="relative transform overflow-hidden rounded-lg bg-white text-left shadow-xl transition-all sm:w-full sm:max-w-md">
+                    <div class="bg-white px-4 pb-4 pt-5 sm:p-6 sm:pb-4">
+                        <h3 class="text-lg font-semibold leading-6 text-slate-900">新增藥品品項</h3>
+                        <div class="mt-4 space-y-4">
+                            <div>
+                                <label class="block text-sm font-medium text-slate-700">藥品名稱 (含規格)</label>
+                                <input type="text" id="new-drug-name" class="mt-1 block w-full rounded-md border-slate-300 shadow-sm ring-1 ring-inset ring-slate-300 focus:ring-brand-main py-2 px-3">
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-slate-700">單位 (如: vial, amp, tab)</label>
+                                <input type="text" id="new-drug-unit" class="mt-1 block w-full rounded-md border-slate-300 shadow-sm ring-1 ring-inset ring-slate-300 focus:ring-brand-main py-2 px-3">
+                            </div>
+                        </div>
+                    </div>
+                    <div class="bg-slate-50 px-4 py-3 sm:flex sm:flex-row-reverse sm:px-6">
+                        <button type="button" onclick="addNewDrug()" class="inline-flex w-full justify-center rounded-md bg-brand-main px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-brand-dark sm:ml-3 sm:w-auto">新增</button>
+                        <button type="button" onclick="toggleModal('add-drug-modal')" class="mt-3 inline-flex w-full justify-center rounded-md bg-white px-3 py-2 text-sm font-semibold text-slate-900 shadow-sm ring-1 ring-inset ring-slate-300 hover:bg-slate-50 sm:mt-0 sm:w-auto">取消</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal: Settings/Credits -->
+    <div id="settings-modal" class="fixed inset-0 z-50 hidden">
+        <div class="fixed inset-0 bg-slate-500 bg-opacity-75 transition-opacity backdrop-blur-sm" onclick="toggleModal('settings-modal')"></div>
+        <div class="fixed inset-0 z-10 overflow-y-auto pointer-events-none">
+            <div class="flex min-h-full items-center justify-center p-4">
+                <div class="pointer-events-auto relative transform overflow-hidden rounded-lg bg-white text-left shadow-xl transition-all sm:w-full sm:max-w-sm p-6">
+                    <h3 class="text-lg font-bold text-slate-900 mb-2">關於系統</h3>
+                    <p class="text-sm text-slate-600 mb-4">義大癌醫藥劑科專用藥品收支結存系統 v1.0</p>
+                    <div class="border-t border-slate-100 pt-4">
+                        <button onclick="clearAllData()" class="w-full text-red-600 border border-red-200 bg-red-50 hover:bg-red-100 px-4 py-2 rounded text-sm font-medium transition">
+                            <i class="fa-solid fa-trash-can mr-2"></i>清除所有瀏覽器快取資料
+                        </button>
+                        <p class="text-xs text-slate-400 mt-2 text-center">警告：此操作不可逆，請先匯出草稿。</p>
+                    </div>
+                    <button onclick="toggleModal('settings-modal')" class="mt-4 w-full bg-slate-100 text-slate-700 px-4 py-2 rounded text-sm font-medium hover:bg-slate-200">關閉</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- 1. State Management ---
+        let drugs = JSON.parse(localStorage.getItem('eda_drugs')) || [
+            { id: 1, name: 'Plasbumin-25 (Albumin 25%, 12.5g/50ml/vial)', unit: 'vial', currentStock: 0 },
+            { id: 2, name: 'KCL 20mEq/10ml/amp', unit: 'amp', currentStock: 0 }
+        ];
+
+        let transactions = JSON.parse(localStorage.getItem('eda_transactions')) || [];
+        
+        let currentDrugId = null;
+
+        // --- 2. Initialization ---
+        document.addEventListener('DOMContentLoaded', () => {
+            renderDrugList();
+            updateTime();
+            initSignaturePad();
+            
+            // Set default date to today
+            document.getElementById('entry-date').valueAsDate = new Date();
+        });
+
+        function updateTime() {
+            const now = new Date();
+            const dateStr = now.toLocaleDateString('zh-TW', { year: 'numeric', month: '2-digit', day: '2-digit' });
+            document.getElementById('system-time').innerText = dateStr;
+            document.getElementById('print-date').innerText = now.toLocaleString('zh-TW');
+        }
+
+        // --- 3. Rendering ---
+        function renderDrugList() {
+            const list = document.getElementById('drug-list');
+            list.innerHTML = '';
+            
+            drugs.forEach(drug => {
+                const btn = document.createElement('button');
+                btn.className = `w-full text-left px-3 py-3 rounded-md mb-1 text-sm font-medium transition flex justify-between items-center group ${currentDrugId === drug.id ? 'bg-brand-main text-white shadow-md' : 'text-slate-600 hover:bg-slate-100'}`;
+                btn.onclick = () => selectDrug(drug.id);
+                btn.innerHTML = `
+                    <span class="truncate pr-2">${drug.name}</span>
+                    <span class="${currentDrugId === drug.id ? 'bg-white/20 text-white' : 'bg-slate-200 text-slate-600'} text-xs px-2 py-0.5 rounded-full">${drug.currentStock}</span>
+                `;
+                list.appendChild(btn);
+            });
+
+            if (currentDrugId === null && drugs.length > 0) {
+                // Do not auto select to keep welcome screen, or select first:
+                // selectDrug(drugs[0].id);
+            }
+        }
+
+        function selectDrug(id) {
+            currentDrugId = id;
+            const drug = drugs.find(d => d.id === id);
+            
+            // Update UI
+            document.getElementById('current-drug-name').innerText = drug.name;
+            document.getElementById('current-drug-stock').innerText = `目前結存: ${drug.currentStock} ${drug.unit}`;
+            document.getElementById('print-drug-name').innerText = `藥品名稱: ${drug.name}`;
+            
+            // Update Modal Info
+            document.getElementById('modal-drug-name').innerText = drug.name;
+            document.getElementById('unit-display').innerText = drug.unit;
+
+            // Re-render sidebar to update active state
+            renderDrugList();
+
+            // Render Table
+            renderTable(id);
+            
+            // Update Datalist for Batch
+            updateBatchDatalist(id);
+        }
+
+        function renderTable(drugId) {
+            const tbody = document.getElementById('ledger-body');
+            tbody.innerHTML = '';
+            
+            const filtered = transactions.filter(t => t.drugId === drugId).sort((a, b) => new Date(a.date) - new Date(b.date));
+
+            if (filtered.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="7" class="px-3 py-10 text-center text-slate-400 text-sm">尚無紀錄</td></tr>`;
+                return;
+            }
+
+            filtered.forEach(t => {
+                const row = document.createElement('tr');
+                const isNegative = t.change < 0;
+                const changeClass = isNegative ? 'text-red-600' : (t.change > 0 ? 'text-green-600' : 'text-slate-500');
+                const signPrefix = t.change > 0 ? '+' : '';
+
+                row.innerHTML = `
+                    <td class="whitespace-nowrap py-4 pl-4 pr-3 text-sm text-slate-900">${t.date}</td>
+                    <td class="whitespace-nowrap px-3 py-4 text-sm text-slate-600">
+                        <span class="font-bold block">${translateType(t.type)}</span>
+                        <span class="text-xs text-slate-400">${t.refNo || '-'}</span>
+                    </td>
+                    <td class="whitespace-nowrap px-3 py-4 text-sm text-slate-600">
+                        <div class="text-slate-900">${t.chartNo || '-'}</div>
+                        <div class="text-xs">${t.patientName || ''}</div>
+                    </td>
+                    <td class="whitespace-nowrap px-3 py-4 text-sm text-slate-600">
+                         <div class="font-medium text-slate-900">${t.batchNo || '-'}</div>
+                         <div class="text-xs text-slate-500">${t.expiryDate ? 'Exp:'+t.expiryDate : ''}</div>
+                    </td>
+                    <td class="whitespace-nowrap px-3 py-4 text-sm font-bold text-right ${changeClass}">${t.type === 'CHECK' ? '盤點' : signPrefix + t.change}</td>
+                    <td class="whitespace-nowrap px-3 py-4 text-sm text-slate-900 font-bold text-right">${t.balance}</td>
+                    <td class="whitespace-nowrap px-3 py-4 text-sm text-center">
+                        ${t.signature ? `<img src="${t.signature}" class="h-8 mx-auto border border-slate-100 bg-white p-0.5 rounded">` : '-'}
+                    </td>
+                `;
+                tbody.appendChild(row);
+            });
+        }
+
+        function translateType(type) {
+            const map = {
+                'OPD': '門診', 'ER': '急診', 'IPD': '住院',
+                'IN': '進貨', 'RETURN': '退藥', 'CHECK': '盤點'
+            };
+            return map[type] || type;
+        }
+
+        function updateBatchDatalist(drugId) {
+            const datalist = document.getElementById('batch-history');
+            datalist.innerHTML = '';
+            // Get unique batches
+            const batches = [...new Set(transactions.filter(t => t.drugId === drugId && t.batchNo).map(t => t.batchNo))];
+            batches.forEach(b => {
+                const opt = document.createElement('option');
+                opt.value = b;
+                datalist.appendChild(opt);
+            });
+        }
+
+        // --- 4. Logic & Interactions ---
+
+        function toggleModal(id) {
+            const el = document.getElementById(id);
+            if (el.classList.contains('hidden')) {
+                el.classList.remove('hidden');
+                if (id === 'entry-modal') {
+                     if (!currentDrugId) {
+                         alert('請先選擇藥品');
+                         el.classList.add('hidden');
+                         return;
+                     }
+                     // Reset form
+                     document.getElementById('transaction-form').reset();
+                     document.getElementById('entry-date').valueAsDate = new Date();
+                     handleTypeChange();
+                     clearSignature();
+                }
+            } else {
+                el.classList.add('hidden');
+            }
+        }
+
+        function handleTypeChange() {
+            const type = document.getElementById('entry-type').value;
+            const refLabel = document.getElementById('label-ref');
+            const refInput = document.getElementById('entry-ref');
+            const fieldRef = document.getElementById('field-ref');
+            const fieldChart = document.getElementById('field-chart');
+            const fieldName = document.getElementById('field-name');
+            const qtyHint = document.getElementById('qty-hint');
+
+            // Reset visibility
+            fieldRef.classList.remove('hidden');
+            fieldChart.classList.remove('hidden');
+            fieldName.classList.remove('hidden');
+            
+            // Logic
+            switch (type) {
+                case 'OPD':
+                    refLabel.innerText = 'OPD 領藥號碼';
+                    qtyHint.innerText = '(撥出扣帳)';
+                    break;
+                case 'ER':
+                    refLabel.innerText = 'ER 領藥號碼';
+                    qtyHint.innerText = '(撥出扣帳)';
+                    break;
+                case 'IPD':
+                    refLabel.innerText = '病床號';
+                    qtyHint.innerText = '(撥出扣帳)';
+                    break;
+                case 'IN':
+                    fieldRef.classList.add('hidden'); // No ref needed for stock in usually, or Invoice No
+                    fieldChart.classList.add('hidden');
+                    fieldName.classList.add('hidden');
+                    refLabel.innerText = '單號';
+                    qtyHint.innerText = '(撥入加帳)';
+                    break;
+                case 'RETURN':
+                    refLabel.innerText = '退藥原因/單號';
+                    qtyHint.innerText = '(撥入加帳)';
+                    break;
+                case 'CHECK':
+                    fieldRef.classList.add('hidden');
+                    fieldChart.classList.add('hidden');
+                    fieldName.classList.add('hidden');
+                    qtyHint.innerText = '(僅記錄，不計算加減)';
+                    break;
+            }
+        }
+        
+        // New Function: Auto-fill expiry based on batch
+        function handleBatchChange() {
+            const batchInput = document.getElementById('entry-batch');
+            const expiryInput = document.getElementById('entry-expiry');
+            const batchVal = batchInput.value.trim();
+
+            if (!batchVal) return;
+
+            // Find matching transaction with an expiry date (preferably looking for the earliest record or IN record)
+            const record = transactions.find(t => 
+                t.drugId === currentDrugId && 
+                t.batchNo === batchVal && 
+                t.expiryDate
+            );
+
+            if (record) {
+                expiryInput.value = record.expiryDate;
+            }
+        }
+
+        function addNewDrug() {
+            const name = document.getElementById('new-drug-name').value;
+            const unit = document.getElementById('new-drug-unit').value;
+            if(!name || !unit) return alert('請填寫完整資訊');
+
+            const newId = (drugs.length > 0 ? Math.max(...drugs.map(d => d.id)) : 0) + 1;
+            drugs.push({ id: newId, name: name, unit: unit, currentStock: 0 });
+            
+            saveData();
+            renderDrugList();
+            toggleModal('add-drug-modal');
+            selectDrug(newId);
+        }
+
+        function submitTransaction() {
+            if (!currentDrugId) return;
+
+            const date = document.getElementById('entry-date').value;
+            const type = document.getElementById('entry-type').value;
+            const refNo = document.getElementById('entry-ref').value;
+            const batchNo = document.getElementById('entry-batch').value;
+            const expiryDate = document.getElementById('entry-expiry').value; // New
+            const chartNo = document.getElementById('entry-chart').value;
+            const patientName = document.getElementById('entry-name').value;
+            const rawQty = parseFloat(document.getElementById('entry-qty').value);
+            const signature = signaturePad.toDataURL(); // Get Base64
+
+            if (!date || isNaN(rawQty)) return alert('請填寫日期與數量');
+            if (isCanvasBlank(signaturePad)) return alert('請簽名');
+
+            const drug = drugs.find(d => d.id === currentDrugId);
+            
+            let finalChange = 0;
+            let newBalance = drug.currentStock;
+
+            if (type === 'IN' || type === 'RETURN') {
+                finalChange = Math.abs(rawQty);
+                newBalance += finalChange;
+            } else if (type === 'CHECK') {
+                finalChange = 0;
+                // Inventory check just logs state, doesn't change math unless we implement adjustment
+            } else {
+                // Outgoing
+                finalChange = -Math.abs(rawQty);
+                newBalance += finalChange;
+            }
+
+            const transaction = {
+                id: Date.now(),
+                drugId: currentDrugId,
+                date, type, refNo, batchNo, expiryDate, chartNo, patientName,
+                change: finalChange,
+                balance: parseFloat(newBalance.toFixed(2)), // Avoid float errors
+                signature
+            };
+
+            // Update State
+            transactions.push(transaction);
+            drug.currentStock = parseFloat(newBalance.toFixed(2));
+
+            // Save & Render
+            saveData();
+            renderTable(currentDrugId);
+            renderDrugList(); // Update sidebar stock count
+            toggleModal('entry-modal');
+        }
+
+        function saveData() {
+            localStorage.setItem('eda_drugs', JSON.stringify(drugs));
+            localStorage.setItem('eda_transactions', JSON.stringify(transactions));
+        }
+
+        function clearAllData() {
+            if(confirm('確定清除所有資料嗎？')) {
+                localStorage.removeItem('eda_drugs');
+                localStorage.removeItem('eda_transactions');
+                location.reload();
+            }
+        }
+
+        // --- 5. Signature Pad Logic ---
+        let signaturePad, ctx;
+        let isDrawing = false;
+
+        function initSignaturePad() {
+            signaturePad = document.getElementById('signature-pad');
+            ctx = signaturePad.getContext('2d');
+            ctx.strokeStyle = "#000";
+            ctx.lineWidth = 2;
+
+            // Mouse Events
+            signaturePad.addEventListener('mousedown', startDrawing);
+            signaturePad.addEventListener('mousemove', draw);
+            signaturePad.addEventListener('mouseup', stopDrawing);
+            signaturePad.addEventListener('mouseout', stopDrawing);
+
+            // Touch Events
+            signaturePad.addEventListener('touchstart', (e) => {
+                e.preventDefault(); // Prevent scroll
+                const touch = e.touches[0];
+                const mouseEvent = new MouseEvent("mousedown", {
+                    clientX: touch.clientX,
+                    clientY: touch.clientY
+                });
+                signaturePad.dispatchEvent(mouseEvent);
+            });
+            signaturePad.addEventListener('touchmove', (e) => {
+                e.preventDefault();
+                const touch = e.touches[0];
+                const mouseEvent = new MouseEvent("mousemove", {
+                    clientX: touch.clientX,
+                    clientY: touch.clientY
+                });
+                signaturePad.dispatchEvent(mouseEvent);
+            });
+            signaturePad.addEventListener('touchend', () => {
+                const mouseEvent = new MouseEvent("mouseup", {});
+                signaturePad.dispatchEvent(mouseEvent);
+            });
+        }
+
+        function startDrawing(e) {
+            isDrawing = true;
+            ctx.beginPath();
+            const rect = signaturePad.getBoundingClientRect();
+            ctx.moveTo(e.clientX - rect.left, e.clientY - rect.top);
+        }
+
+        function draw(e) {
+            if (!isDrawing) return;
+            const rect = signaturePad.getBoundingClientRect();
+            ctx.lineTo(e.clientX - rect.left, e.clientY - rect.top);
+            ctx.stroke();
+        }
+
+        function stopDrawing() {
+            isDrawing = false;
+        }
+
+        function clearSignature() {
+            ctx.clearRect(0, 0, signaturePad.width, signaturePad.height);
+        }
+
+        function isCanvasBlank(canvas) {
+            const blank = document.createElement('canvas');
+            blank.width = canvas.width;
+            blank.height = canvas.height;
+            return canvas.toDataURL() === blank.toDataURL();
+        }
+
+        // --- 6. Export / Import Functions ---
+
+        function exportJSON() {
+            const data = { drugs, transactions };
+            const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `eda_pharmacy_backup_${new Date().toISOString().slice(0,10)}.json`;
+            a.click();
+        }
+
+        function importJSON(input) {
+            const file = input.files[0];
+            if (!file) return;
+            
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                try {
+                    const data = JSON.parse(e.target.result);
+                    
+                    // 檢查資料結構是否正確
+                    if (data.drugs && Array.isArray(data.drugs) && data.transactions && Array.isArray(data.transactions)) {
+                        // 更新記憶體中的變數
+                        drugs = data.drugs;
+                        transactions = data.transactions;
+                        
+                        // 儲存至 LocalStorage (持久化)
+                        saveData();
+                        
+                        // 直接重新渲染介面，不要重新整理網頁
+                        renderDrugList();
+                        
+                        // 如果匯入後有藥品，自動選取第一個以顯示資料
+                        if (drugs.length > 0) {
+                            selectDrug(drugs[0].id);
+                        } else {
+                            // 若無藥品資料的重置狀態
+                            currentDrugId = null;
+                            document.getElementById('current-drug-name').innerText = '無藥品資料';
+                            document.getElementById('current-drug-stock').innerText = '目前結存: -';
+                            document.getElementById('ledger-body').innerHTML = '<tr><td colspan="7" class="px-3 py-10 text-center text-slate-400 text-sm">資料庫為空，請新增藥品</td></tr>';
+                        }
+                        
+                        alert('草稿匯入成功！');
+                    } else {
+                        alert('檔案格式錯誤：找不到必要的 drugs 或 transactions 資料欄位');
+                    }
+                } catch (err) {
+                    console.error(err);
+                    alert('無法解析檔案：請確認您上傳的是正確的 .json 備份檔');
+                }
+                
+                // 清空 input 值，確保如果使用者想再次匯入同一個檔案時能觸發 onchange
+                input.value = '';
+            };
+            reader.readAsText(file);
+        }
+
+        function exportCSV() {
+            if (!currentDrugId) return alert('請先選擇藥品');
+            
+            const drug = drugs.find(d => d.id === currentDrugId);
+            const filtered = transactions.filter(t => t.drugId === currentDrugId);
+
+            // Add BOM for UTF-8 Excel compatibility
+            let csvContent = "\uFEFF"; 
+            csvContent += "日期,來源類型,領藥號/單號,病歷號,病人姓名,批號,效期,異動量,結存\n";
+
+            filtered.forEach(t => {
+                const row = [
+                    t.date,
+                    translateType(t.type),
+                    t.refNo || '',
+                    t.chartNo || '',
+                    t.patientName || '',
+                    t.batchNo || '',
+                    t.expiryDate || '',
+                    t.change,
+                    t.balance
+                ];
+                csvContent += row.join(",") + "\n";
+            });
+
+            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `${drug.name}_ledger.csv`;
+            a.click();
+        }
+
+        // New Safe Print Function
+        function printLedger() {
+            try {
+                // Check if we are inside a restrictive iframe
+                // This is a heuristic: if print fails to open, nothing happens, so we warn user
+                window.print();
+                
+                // Note: We cannot reliably detect if window.print() actually opened the dialog due to browser security.
+                // However, the CSS fixes above should make it work if the dialog DOES open.
+            } catch (e) {
+                alert('列印功能被瀏覽器阻擋。請嘗試：\n1. 點擊「匯出 PDF」或「Excel」\n2. 或將檔案下載到本機執行');
+            }
+        }
+    </script>
+</body>
+</html>
